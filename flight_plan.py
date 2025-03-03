@@ -1,78 +1,92 @@
+import os
 import xml.etree.ElementTree as ET
 import pandas as pd
 
 # Define the XML namespace
 namespace = {"ns": "http://aeec.aviation-ia.net/633"}
 
-# Load and parse the XML file
-file_path = "airinc633_20250213/202502130005502333080.xml"
-tree = ET.parse(file_path)
-root = tree.getroot()
+# Directory containing XML files
+xml_directory = "airinc633_20250213"
 
-### --- Extract Flight Details --- ###
-flight_info = {}
+# List to store all flight and waypoint data
+all_flight_data = []
+all_waypoints_data = []
 
-# Extract flight number
-flight_number_element = root.find(".//ns:FlightIdentification/ns:FlightNumber", namespace)
-if flight_number_element is not None:
-    airline_code = flight_number_element.get("airlineIATACode", "N/A")
-    flight_number = flight_number_element.get("number", "N/A")
-    flight_info["Flight Number"] = f"{airline_code}{flight_number}"
+# Loop through all XML files in the directory
+for filename in os.listdir(xml_directory):
+    if filename.endswith(".xml"):  # Ensure only process XML files
+        file_path = os.path.join(xml_directory, filename)
 
-# Extract departure and destination airports
-departure_element = root.find(".//ns:DepartureAirport/ns:AirportICAOCode", namespace)
-arrival_element = root.find(".//ns:ArrivalAirport/ns:AirportICAOCode", namespace)
+        # Load and parse the XML file
+        tree = ET.parse(file_path)
+        root = tree.getroot()
 
-flight_info["Departure Airport"] = departure_element.text if departure_element is not None else "N/A"
-flight_info["Arrival Airport"] = arrival_element.text if arrival_element is not None else "N/A"
+        ### --- Extract Flight Details --- ###
+        flight_data = {
+            "File Name": filename,  # Track the source file for reference
+            "Flight Number": None,
+            "Departure Airport": None,
+            "Arrival Airport": None,
+            "Aircraft Registration": None,
+            "Scheduled Time of Departure": None,
+            "Flight Date": None
+        }
 
-# Extract aircraft registration number
-aircraft_element = root.find(".//ns:Aircraft", namespace)
-flight_info["Aircraft Registration"] = aircraft_element.get("aircraftRegistration", "N/A") if aircraft_element is not None else "N/A"
+        # Extract flight number
+        flight_number_element = root.find(".//ns:FlightIdentification/ns:FlightNumber", namespace)
+        if flight_number_element is not None:
+            airline_code = flight_number_element.get("airlineIATACode", "N/A")
+            flight_number = flight_number_element.get("number", "N/A")
+            flight_data["Flight Number"] = f"{airline_code}{flight_number}"
 
-# Extract scheduled time of departure
-departure_time_element = root.find(".//ns:Flight", namespace)
-flight_info["Scheduled Time of Departure"] = departure_time_element.get("scheduledTimeOfDeparture", "N/A") if departure_time_element is not None else "N/A"
+        # Extract departure and arrival airports
+        flight_data["Departure Airport"] = root.find(".//ns:DepartureAirport/ns:AirportIATACode", namespace).text or "N/A"
+        flight_data["Arrival Airport"] = root.find(".//ns:ArrivalAirport/ns:AirportIATACode", namespace).text or "N/A"
 
-# Extract flight date
-flight_info["Flight Date"] = departure_time_element.get("flightOriginDate", "N/A") if departure_time_element is not None else "N/A"
+        # Extract aircraft registration number
+        aircraft_element = root.find(".//ns:Aircraft", namespace)
+        flight_data["Aircraft Registration"] = aircraft_element.get("aircraftRegistration", "N/A") if aircraft_element is not None else "N/A"
 
-# Print flight details
-print("\nFlight Details:")
-for key, value in flight_info.items():
-    print(f"{key}: {value}")
+        # Extract scheduled departure time and flight date
+        flight_element = root.find(".//ns:Flight", namespace)
+        if flight_element is not None:
+            flight_data["Scheduled Time of Departure"] = flight_element.get("scheduledTimeOfDeparture", "N/A")
+            flight_data["Flight Date"] = flight_element.get("flightOriginDate", "N/A")
 
-### --- Extract Waypoint Details --- ###
-waypoints_data = []
+        # Store flight data
+        all_flight_data.append(flight_data)
 
-for waypoint in root.findall(".//ns:Waypoints/ns:Waypoint", namespace):
-    waypoint_name = waypoint.get("waypointName", "N/A")
+        ### --- Extract Waypoint Details --- ###
+        for waypoint in root.findall(".//ns:Waypoints/ns:Waypoint", namespace):
+            waypoint_data = {
+                "File Name": filename,
+                "Flight Number": flight_data["Flight Number"],
+                "Waypoint Name": waypoint.get("waypointName", "N/A"),
+                "Latitude": waypoint.find("ns:Coordinates", namespace).get("latitude", "N/A"),
+                "Longitude": waypoint.find("ns:Coordinates", namespace).get("longitude", "N/A"),
+                "Wind Direction (°)": waypoint.find("ns:SegmentWind/ns:Direction/ns:Value", namespace).text or "N/A",
+                "Wind Speed (kt)": waypoint.find("ns:SegmentWind/ns:Speed/ns:Value", namespace).text or "N/A",
+                "Time Over Waypoint": waypoint.find("ns:TimeOverWaypoint/ns:EstimatedTime/ns:Value", namespace).text or "N/A",
+                "Fuel On Board (lb)": waypoint.find("ns:FuelOnBoard/ns:EstimatedWeight/ns:Value", namespace).text or "N/A"
+            }
 
-    # Extract coordinates
-    coordinates_element = waypoint.find("ns:Coordinates", namespace)
-    latitude = coordinates_element.get("latitude", "N/A") if coordinates_element is not None else "N/A"
-    longitude = coordinates_element.get("longitude", "N/A") if coordinates_element is not None else "N/A"
+            # Store waypoint data
+            all_waypoints_data.append(waypoint_data)
 
-    # Extract wind direction and speed
-    wind_direction_element = waypoint.find("ns:SegmentWind/ns:Direction/ns:Value", namespace)
-    wind_speed_element = waypoint.find("ns:SegmentWind/ns:Speed/ns:Value", namespace)
-    wind_direction = wind_direction_element.text if wind_direction_element is not None else "N/A"
-    wind_speed = wind_speed_element.text if wind_speed_element is not None else "N/A"
+### --- Convert to DataFrames --- ###
+flights_df = pd.DataFrame(all_flight_data)
+waypoints_df = pd.DataFrame(all_waypoints_data)
 
-    # Extract time over waypoint
-    time_over_element = waypoint.find("ns:TimeOverWaypoint/ns:EstimatedTime/ns:Value", namespace)
-    time_over_waypoint = time_over_element.text if time_over_element is not None else "N/A"
+# Remove the date prefix from "Time Over Waypoint" in the waypoints DataFrame
+waypoints_df["Time Over Waypoint"] = waypoints_df["Time Over Waypoint"].str.replace(r"^\d{4}-\d{2}-\d{2}T", "", regex=True)
 
-    # Extract fuel on board
-    fuel_element = waypoint.find("ns:FuelOnBoard/ns:EstimatedWeight/ns:Value", namespace)
-    fuel_on_board = fuel_element.text if fuel_element is not None else "N/A"
+# Remove the date prefix from "Scheduled Time of Departure" in the flights DataFrame
+flights_df["Scheduled Time of Departure"] = flights_df["Scheduled Time of Departure"].str.replace(r"^\d{4}-\d{2}-\d{2}T", "", regex=True)
 
-    # Append to list
-    waypoints_data.append([waypoint_name, latitude, longitude, wind_direction, wind_speed, time_over_waypoint, fuel_on_board])
 
-# Convert to DataFrame for better visualization
-waypoints_df = pd.DataFrame(waypoints_data, columns=["Waypoint Name", "Latitude", "Longitude", "Wind Direction (°)", "Wind Speed (kt)", "Time Over Waypoint", "Fuel On Board (lb)"])
+# Save as CSV files for easier analysis
+flights_df.to_csv("all_flights.csv", index=True)
+waypoints_df.to_csv("all_waypoints.csv", index=True)
 
-# Print waypoints data as a table
-print("\nWaypoint Details:")
-print(waypoints_df.to_string(index=False))
+print(f"Processed {len(all_flight_data)} flight plans and {len(all_waypoints_data)} waypoints.")
+print("Data saved as 'all_flights.csv' and 'all_waypoints.csv'.")
