@@ -78,6 +78,6 @@ df = pd.DataFrame(structured_data)
 print(df.head(10))
 
 df.insert(0, "Index", range(1, len(df) + 1))
-df.to_csv("cleaned_position_message.csv", index=True)
+df.to_csv("position_message.csv", index=True)
 
 conn.close()
