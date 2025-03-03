@@ -1,7 +1,8 @@
-## Parsing the XML files
 import os
 import xml.etree.ElementTree as ET
 import pandas as pd
+
+## Parsing the XML files
 
 # Define the XML namespace
 namespace = {"ns": "http://aeec.aviation-ia.net/633"}
@@ -22,7 +23,7 @@ for filename in os.listdir(xml_directory):
         tree = ET.parse(file_path)
         root = tree.getroot()
 
-        ### --- Extract Flight Details --- ###
+        # Extract Flight Details
         flight_data = {
             "File Name": filename,  # Track the source file for reference
             "Flight Number": None,
@@ -57,7 +58,7 @@ for filename in os.listdir(xml_directory):
         # Store flight data
         all_flight_data.append(flight_data)
 
-        ### --- Extract Waypoint Details --- ###
+        # Extract Waypoint Details
         for waypoint in root.findall(".//ns:Waypoints/ns:Waypoint", namespace):
             waypoint_data = {
                 "File Name": filename,
@@ -74,7 +75,7 @@ for filename in os.listdir(xml_directory):
             # Store waypoint data
             all_waypoints_data.append(waypoint_data)
 
-### --- Convert to DataFrames --- ###
+# Convert to DataFrames
 flights_df = pd.DataFrame(all_flight_data)
 waypoints_df = pd.DataFrame(all_waypoints_data)
 
@@ -84,7 +85,7 @@ waypoints_df["Time Over Waypoint"] = waypoints_df["Time Over Waypoint"].str.repl
 # Remove the date prefix from "Scheduled Time of Departure" in the flights DataFrame
 flights_df["Scheduled Time of Departure"] = flights_df["Scheduled Time of Departure"].str.replace(r"^\d{4}-\d{2}-\d{2}T", "", regex=True)
 
-# Save as CSV files for easier analysis
+# Save as CSV files
 flights_df.to_csv("all_flights.csv", index=True)
 waypoints_df.to_csv("all_waypoints.csv", index=True)
 
@@ -175,3 +176,35 @@ df.insert(0, "Index", range(1, len(df) + 1))
 df.to_csv("position_messages.csv", index=True)
 
 conn.close()
+
+#---- Some Basic Analysis ---#
+
+# Filter only for flight "HA1641"
+ha1641_df = df[df["Flight_Number"] == "HA1641"]
+
+# Convert "Time_HHMM" to ensure proper sorting (handling it as string for now)
+ha1641_df = ha1641_df.sort_values(by="Time_HHMM", ascending=True)
+
+# Save filtered results
+ha1641_df.to_csv("position_messages_HA1641.csv", index=False)
+
+# Display the first 10 rows for verification
+print("\nPosition Messages for HA1641:")
+print(ha1641_df.head(10))
+
+# Filter waypoints for flight "HA1641"
+ha1641_waypoints_df = waypoints_df[waypoints_df["Flight Number"] == "HA1641"]
+
+# Convert "Time Over Waypoint" to ensure proper sorting
+ha1641_waypoints_df["Time Over Waypoint"] = pd.to_datetime(ha1641_waypoints_df["Time Over Waypoint"], format="%H:%M:%S").dt.time
+
+# Group by "File Name" (same flight plan) and sort each group by "Time Over Waypoint"
+ha1641_waypoints_df = ha1641_waypoints_df.sort_values(by=["File Name", "Time Over Waypoint"], ascending=[True, True])
+
+# Save the grouped and sorted waypoints to a CSV file
+ha1641_waypoints_df.to_csv("waypoints_HA1641.csv", index=False)
+
+# Display the first 10 grouped waypoints
+print("\nWaypoints for HA1641 (Grouped by File Name):")
+print(ha1641_waypoints_df.head(10))
+
